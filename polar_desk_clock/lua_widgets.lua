@@ -41,6 +41,8 @@ local function conky_window_surface()
                                    conky_window.height), true
 end
 
+version = "0.0.1-Alpha"
+
 local function hex2rgb(hex)
   hex = hex:gsub("#", "")
   return tonumber("0x" .. hex:sub(1, 2)) / 255,
@@ -72,17 +74,25 @@ local function measure(cr, text)
   return extents
 end
 
+turn = {0, 0, 0, 0, 0, 0}
+set = #turn
+seconds = {"00", "01", "02", "03", "04", "05", "06", "07", "08", "09", "10", "11", "12", "13", "14", "15", "16", "17", "18", "19", "20", "21", "22", "23", "24", "25", "26", "27", "28", "29", "30", "31", "32", "33", "34", "35", "36", "37", "38", "39", "40", "41", "42", "43", "44", "45", "46", "47", "48", "49", "50", "51", "52", "53", "54", "55", "56", "57", "58", "59"}
+minutes = seconds
+hours = {"00", "01", "02", "03", "04", "05", "06", "07", "08", "09", "10", "11", "12", "13", "14", "15", "16", "17", "18", "19", "20", "21", "22", "23"}
+days ={"01", "02", "03", "04", "05", "06", "07", "08", "09", "10", "11", "12", "13", "14", "15", "16", "17", "18", "19", "20", "21", "22", "23", "24", "25", "26", "27", "28", "29", "30", "31"}
+wdays = {"Mo", "Tu", "We", "Th", "Fr", "Sa", "Su"}
+months = {"Ja", "Fe", "Mr", "Ap", "My", "Jn", "Jl", "Au", "Se", "Oc", "No", "De"}
+
 --   operator -- cairo operator used while drawing the labels
 local function create_circle(cr, w, h, members, distance_between_members,
                              radius, line_width, operator, baseline_shift_for_text, pointer,
-                             days, shift_days_distance,arc_label)
+                             elements, shift_days_distance,arc_label,pass)
 
   cairo_set_line_width(cr, line_width)
-  -- General case pointer is direct
 
   local current = pointer
   -- Special case pointer is offset
-  if days[1] == "00" then 
+  if elements[1] == "00" then 
     current = pointer + 1
   end
   -- The rounded ends are a function of arc width
@@ -99,30 +109,46 @@ local function create_circle(cr, w, h, members, distance_between_members,
   cairo_set_source_rgba(cr, r, g, b, transparency)
   local label_size = measure(cr, arc_label)
   cairo_set_operator(cr, operator)
-  cairo_move_to(cr, w / 2 + ((text_radius) * math.cos((start_angle * (math.pi / 180.0)) + angle_of_arc_round / 2)) - label_size.width - (arc_round * 2) ,
-                    h / 2 + ((text_radius) * math.sin((start_angle * (math.pi / 180.0)) + angle_of_arc_round / 2)))
-  cairo_show_text(cr, arc_label)
+  if pass == 0 then
+    cairo_move_to(cr, w / 2 + ((text_radius) * math.cos((start_angle * (math.pi / 180.0)) + angle_of_arc_round / 2)) - label_size.width - (arc_round * 1.6) ,
+                      h / 2 + ((text_radius) * math.sin((start_angle * (math.pi / 180.0)) + angle_of_arc_round / 2)))
+                      cairo_show_text(cr, arc_label)
+  else
+    cairo_move_to(cr, w / 2 + ((text_radius) * math.cos((start_angle * (math.pi / 180.0)) + angle_of_arc_round / 2)) + (arc_round * .6) ,
+                      h / 2 + ((text_radius) * math.sin((start_angle * (math.pi / 180.0)) + angle_of_arc_round / 2)))
+                      cairo_rotate(cr, 8 * math.pi / 180.0)
+                      cairo_show_text(cr, arc_label)
+                      cairo_rotate(cr, -8 * math.pi / 180.0)
+  end
   cairo_fill(cr)
 
   cairo_set_source_rgba(cr, r_c, g_c, b_c, transparency)
   --Rounded start
-  if current ~= members then
   cairo_set_operator(cr, operator)
   cairo_set_line_width(cr, 0)
   cairo_arc(cr, w / 2 + ((radius) * math.cos((start_angle * (math.pi / 180.0))) + angle_of_arc_round / 2),
                 h / 2 + ((radius) * math.sin((start_angle * (math.pi / 180.0))) + angle_of_arc_round / 2), arc_round , 0, 2 * math.pi)
   cairo_fill(cr)
-  end
 
   -- The ARC segement
   cairo_set_operator(cr, operator)
   cairo_set_line_width(cr, line_width)
   if current == members then
-    cairo_set_line_width(cr, line_width)
-    cairo_arc(cr, w / 2, h / 2, radius, 0, 2 * math.pi)
+    if pass == 0 then
+      -- Full circle if current member is maxxed out
+      cairo_arc(cr, w / 2, h / 2, radius, 0, 2 * math.pi)
+    else
+      -- Arc segment for the Odd cycle
+      cairo_arc(cr, w / 2, h / 2, radius, end_angle * math.pi / 180, start_angle * math.pi / 180)
+    end
   else
-    cairo_set_line_width(cr, line_width)
-    cairo_arc(cr, w / 2, h / 2, radius, start_angle * math.pi / 180, end_angle * math.pi / 180)
+    if pass == 0 then
+      -- Arc segment for the Even cycle
+      cairo_arc(cr, w / 2, h / 2, radius, start_angle * math.pi / 180, end_angle * math.pi / 180)
+    else
+      -- Arc segment for the Odd cycle
+      cairo_arc(cr, w / 2, h / 2, radius, end_angle * math.pi / 180, start_angle * math.pi / 180)
+    end
   end
   cairo_stroke(cr)
 
@@ -138,7 +164,7 @@ local function create_circle(cr, w, h, members, distance_between_members,
       cairo_set_source_rgba(cr, r_c, g_c, b_c, transparency)
     end
 
-    local label = days[i]
+    local label = elements[i]
     -- Wider labels start further into their segment so they stay centred.
     local text_offset = math.abs(angle_of_members - shift_days_distance) / 2
     local extra_rotation = 4
@@ -163,6 +189,7 @@ local function create_circle(cr, w, h, members, distance_between_members,
                         h / 2 + (text_radius * math.sin(text_angle * (math.pi / 180.0))))
       cairo_rotate(cr, rotation * math.pi / 180.0)
       cairo_set_operator(cr, operator)
+      cairo_set_source_rgba(cr, r, g, b, transparency)
       -- Don't show labels under the arc
       if i == current then cairo_show_text(cr, label) end
       cairo_rotate(cr, -rotation * math.pi / 180.0)
@@ -270,47 +297,54 @@ local function draw_function(cr)
   cairo_select_font_face(cr, "Dejavu Sans Condensed", CAIRO_FONT_SLANT_NORMAL, CAIRO_FONT_WEIGHT_NORMAL)
 
   -- Seconds
-  local seconds = {"00", "01", "02", "03", "04", "05", "06", "07", "08", "09", "10", "11", "12", "13", "14", "15", "16", "17", "18", "19", "20", "21", "22", "23", "24", "25", "26", "27", "28", "29", "30", "31", "32", "33", "34", "35", "36", "37", "38", "39", "40", "41", "42", "43", "44", "45", "46", "47", "48", "49", "50", "51", "52", "53", "54", "55", "56", "57", "58", "59"}
-  create_circle(cr, width, height, #seconds, 3, (inside + (step * arc)) * scale, thick * scale,
-                operator, -3.5 * scale, tonumber(os.date("%S")), seconds, 0, "Seconds:")
+  set = 1
+  turn[set] = create_circle(cr, width, height, #seconds, 3, (inside + (step * arc)) * scale, thick * scale,
+                operator, -3.5 * scale, tonumber(os.date("%S")), seconds, 0, "Seconds:", (tonumber(os.date("%M")) & 1))
 
   arc = arc - 1
   -- Minutes
-  local minutes = seconds -- TODO add text
-  create_circle(cr, width, height, #minutes, 3, (inside + (step * arc)) * scale, thick * scale,
-                operator, -3.5 * scale, tonumber(os.date("%M")), minutes, 0, "Minutes:")
+  set = 2
+  turn[set] = create_circle(cr, width, height, #minutes, 3, (inside + (step * arc)) * scale, thick * scale,
+                operator, -3.5 * scale, tonumber(os.date("%M")), minutes, 0, "Minutes:", (tonumber(os.date("%H")) & 1))
 
   arc = arc - 1
     -- Hours
-  local hours = {"00", "01", "02", "03", "04", "05", "06", "07", "08", "09", "10", "11", "12", "13", "14", "15", "16", "17", "18", "19", "20", "21", "22", "23"}
-  create_circle(cr, width, height, #hours, 3, (inside + (step * arc)) * scale, thick * scale,
-                operator, -3.5 * scale, tonumber(os.date("%H")), hours, 0, "Hours:")
+  set = 3
+  turn[set] = create_circle(cr, width, height, #hours, 3, (inside + (step * arc)) * scale, thick * scale,
+                operator, -3.5 * scale, tonumber(os.date("%H")), hours, 0, "Hours:", (tonumber(os.date("%d")) & 1))
 
   arc = arc - 1
   -- Day in the current month
-  local days ={"01", "02", "03", "04", "05", "06", "07", "08", "09", "10", "11", "12", "13", "14", "15", "16", "17", "18", "19", "20", "21", "22", "23", "24", "25", "26", "27", "28", "29", "30", "31"}
-  create_circle(cr, width, height, days_in_current_month(), 3, (inside + (step * arc)) * scale, thick * scale,
-                operator, -3.5 * scale, tonumber(os.date("%d")), days, 0, "Day:")
+  set = 4
+  turn[set] = create_circle(cr, width, height, days_in_current_month(), 3, (inside + (step * arc)) * scale, thick * scale,
+                operator, -3.5 * scale, tonumber(os.date("%d")), days, 0, "Day:", (tonumber(os.date("%m")) & 1))
 
   arc = arc - 1
   -- Day in week
-  local days = {"Mo", "Tu", "We", "Th", "Fr", "Sa", "Su"}
-  create_circle(cr, width, height, #days, 3, (inside + (step * arc)) * scale, thick * scale,
-                operator, -3.5 * scale, tonumber(os.date("%u")), days, 0, "Weekday:")
+  set = 5
+  turn[set] = create_circle(cr, width, height, #wdays, 3, (inside + (step * arc)) * scale, thick * scale,
+                operator, -3.5 * scale, tonumber(os.date("%u")), wdays, 0, "Weekday:", (tonumber(os.date("%V")) & 1))
 
   arc = arc - 1
   -- Month
-  local months = {"Ja", "Fe", "Mr", "Ap", "My", "Jn", "Jl", "Au", "Se", "Oc", "No", "De"}
-  create_circle(cr, width, height, #months, 3, (inside + (step * arc)) * scale, thick * scale,
-                operator, -3.5 * scale, tonumber(os.date("%m")), months, 0, "Month:")
+  set = 6
+  turn[set] = create_circle(cr, width, height, #months, 3, (inside + (step * arc)) * scale, thick * scale,
+                operator, -3.5 * scale, tonumber(os.date("%m")), months, 0, "Month:", ((tonumber(os.date("%y")) & 1) ~ 1))
 
   -- Year
-  cairo_set_source_rgba(cr, r_c, g_c, b_c, transparency)
+  cairo_set_source_rgba(cr, r, g, b, transparency)
   cairo_set_font_size(cr, 30 * scale)
   local clock = os.date("%H:%M:%S")
   local clock_size = measure(cr, clock)
   cairo_move_to(cr, center_x - clock_size.width / 2 - clock_size.x_bearing, center_y)
   cairo_show_text(cr, clock)
+  
+  cairo_set_font_size(cr, 36 * scale)
+  local date = os.date("%Y")
+  local date_size = measure(cr, date)
+  cairo_move_to(cr, center_x - date_size.width / 2 - date_size.x_bearing, center_y + date_size.height * 1.15 )
+  cairo_show_text(cr, date)
+  
   --cairo_set_font_size(cr, 10 * scale)
 
 end
